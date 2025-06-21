@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:flutter/services.dart';
 import 'package:cross_code_reader/cross_code_reader.dart';
 
 void main() {
@@ -16,17 +13,33 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final controller = CrossCodeScannerController();
+
+  @override
+  void initState() {
+    super.initState();
+    (() async {
+      // Future.delayed(
+      //   Duration(seconds: 5),
+      await controller.start(
+        (await Camera.getCameras())[0].id,
+        (text, _) => print(text),
+        // ),
+      );
+    })();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
         body: Column(
           children: [
-            SizedBox(height: 100, width: 100, child: NativeView(text: 'emm')),
-
-            SizedBox(height: 100, width: 100, child: NativeView(text: 'faa')),
-
-            SizedBox(height: 100, width: 100, child: NativeView(text: 'emm')),
+            SizedBox(
+              height: 100,
+              width: 100,
+              child: CrossCodeScanner(controller: controller),
+            ),
           ],
         ),
       ),
