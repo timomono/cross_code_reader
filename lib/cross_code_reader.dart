@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:js_interop';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:web/web.dart';
 
 import 'cross_code_reader_web.dart';
 import 'jsTypes/html5_qrcode.dart';
@@ -12,11 +14,13 @@ typedef SuccessCallback =
 // TODO: Update all names to 'scanner'
 class CrossCodeScannerController {
   late final PlatformCrossCodeScannerController platformController;
+  SuccessCallback? callback;
+  CameraId? cameraId;
   bool isRunning = false;
 
-  CrossCodeScannerController() {
+  CrossCodeScannerController({this.cameraId, this.callback}) {
     if (kIsWeb) {
-      platformController = WebQrScannerController();
+      platformController = WebQrScannerController(this);
       return;
     }
     throw UnsupportedError("Unsupported platform");
@@ -29,9 +33,12 @@ class CrossCodeScannerController {
     // }
   }
 
-  Future<void> start(CameraId cameraId, SuccessCallback callback) async {
+  /// Run qr code scanner on the this.cameraId
+  Future<void> start() async {
     if (isRunning) return;
-    await platformController.start(cameraId, callback);
+    callback ??= (_, _) {};
+    cameraId ??= (await Camera.getCameras())[0].id;
+    await platformController.start();
   }
 
   Future<void> stop(CameraId cameraId) async {
@@ -41,7 +48,10 @@ class CrossCodeScannerController {
 }
 
 abstract class PlatformCrossCodeScannerController {
-  Future<void> start(CameraId cameraId, SuccessCallback callback);
+  const PlatformCrossCodeScannerController(this.crossCodeScannerController);
+
+  final CrossCodeScannerController crossCodeScannerController;
+  Future<void> start();
   Future<void> stop();
 }
 
@@ -90,9 +100,35 @@ class Camera {
 
   final CameraId id;
   final String label;
+  static final Completer<void> _scriptLoadCompleter = Completer();
+
+  static Future<void> _loadScript() {
+    if (document.querySelectorAll("#html5-qrcode").length == 0) {
+      // TODO: What is the difference between "append"?
+      final scriptElement =
+          HTMLScriptElement()
+            ..id = "html5-qrcode"
+            ..src =
+                "/assets/packages/cross_code_reader/assets/js/html5-qrcode.min.js"
+            ..type = "application/javascript"
+            ..onLoad.listen(
+              (e) =>
+                  _scriptLoadCompleter.isCompleted
+                      ? null
+                      : _scriptLoadCompleter.complete(),
+            );
+      document.head!.appendChild(scriptElement);
+    } else {
+      if (!_scriptLoadCompleter.isCompleted) {
+        _scriptLoadCompleter.complete();
+      }
+    }
+    return _scriptLoadCompleter.future;
+  }
 
   static Future<List<Camera>> getCameras() async {
     if (kIsWeb) {
+      await _loadScript();
       return (await Html5QrCode.getCameras().toDart).toDart
           .map(
             (e) => Camera(id: e.id.toDart as CameraId, label: e.label.toDart),

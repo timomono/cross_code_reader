@@ -19,30 +19,76 @@ class SuccessCallbackWrapper {
 }
 
 class WebQrScannerController extends PlatformCrossCodeScannerController {
-  List<String> elementIds = [];
-  List<Html5QrCode> html5Qrcodes = [];
+  final List<String> _elementIds = [];
+  List<Html5QrCode> _html5Qrcodes = [];
   static final waitScriptLoading = Completer<void>();
+
+  WebQrScannerController(super.crossCodeScannerController);
+
+  void _registerElementId(String id) {
+    _elementIds.add(id);
+    if (super.crossCodeScannerController.isRunning) {
+      start();
+    }
+  }
+
+  void unregisterElementId(String id) => _elementIds.remove(id);
+
+  Future<void> _start() async {
+    await waitScriptLoading.future;
+    print(
+      "callback: ${super.crossCodeScannerController.callback} ${super.crossCodeScannerController.cameraId}",
+    );
+    final startRes =
+        (Html5QrCode(_elementIds[0]).start(
+          super.crossCodeScannerController.cameraId!.toJS,
+          Html5QrcodeCameraScanConfig(fps: 10.toJS),
+          SuccessCallbackWrapper(
+            super.crossCodeScannerController.callback!,
+          ).successCallback.toJS,
+          // TODO: allowInterop is deprecated, migrate to JSExport
+          // allowInterop(callback),
+        )).toDart;
+    print((
+      super.crossCodeScannerController.cameraId!.toJS,
+      Html5QrcodeCameraScanConfig(fps: 10.toJS),
+      SuccessCallbackWrapper(
+        super.crossCodeScannerController.callback!,
+      ).successCallback.toJS,
+      // TODO: allowInterop is deprecated, migrate to JSExport
+      // allowInterop(callback),
+    ));
+    print(startRes);
+    print(await startRes);
+    print("ggo");
+    _html5Qrcodes = await Future.wait(
+      _elementIds.map((elementId) async {
+        final qrScanner = Html5QrCode(elementId);
+        await (qrScanner
+            .start(
+              super.crossCodeScannerController.cameraId!.toJS,
+              Html5QrcodeCameraScanConfig(fps: 10.toJS),
+              SuccessCallbackWrapper(
+                super.crossCodeScannerController.callback!,
+              ).successCallback.toJS,
+              // TODO: allowInterop is deprecated, migrate to JSExport
+              // allowInterop(callback),
+            )
+            .toDart);
+        return qrScanner;
+      }).toList(),
+    );
+    print("finish");
+  }
+
   @override
-  Future<void> start(
-    CameraId cameraId,
-    SuccessCallback callback,
-  ) async => WidgetsBinding.instance.addPostFrameCallback(
-    (_) => waitScriptLoading.future.then<void>(
-      (_) =>
-          html5Qrcodes =
-              elementIds
-                  .map(
-                    (elementId) => Html5QrCode(elementId)..start(
-                      cameraId.toJS,
-                      Html5QrcodeCameraScanConfig(fps: 10.toJS),
-                      SuccessCallbackWrapper(callback).successCallback.toJS,
-                      // TODO: allowInterop is deprecated, migrate to JSExport
-                      // allowInterop(callback),
-                    ),
-                  )
-                  .toList(),
-    ),
-  );
+  Future<void> start() async {
+    try {
+      await _start();
+    } catch (e) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    }
+  }
 
   @override
   Future<void> stop() {
@@ -61,6 +107,9 @@ class WebQrScanner extends StatefulWidget {
 }
 
 class _WebQrScannerState extends State<WebQrScanner> {
+  final viewId = 'cross-code-reader';
+  final id = _generateId();
+
   @override
   void initState() {
     super.initState();
@@ -81,19 +130,15 @@ class _WebQrScannerState extends State<WebQrScanner> {
             );
       document.head!.appendChild(scriptElement);
     } else {
+      print(!WebQrScannerController.waitScriptLoading.isCompleted);
       if (!WebQrScannerController.waitScriptLoading.isCompleted) {
         WebQrScannerController.waitScriptLoading.complete();
+        print("complete");
       }
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final viewId = 'cross-code-reader';
-
+    // Add div element to html
     platformViewRegistry.registerViewFactory(viewId, (int viewId) {
-      final id = generateId();
-      widget.controller.elementIds.add(id);
       final div =
           HTMLDivElement()
             ..id = id
@@ -101,11 +146,22 @@ class _WebQrScannerState extends State<WebQrScanner> {
             ..style.width = '100%';
       return div;
     });
+    // TODO: Start may run before render HtmlElementView
+    widget.controller._registerElementId(id);
+  }
 
+  @override
+  void dispose() {
+    super.dispose();
+    widget.controller.unregisterElementId(id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return HtmlElementView(viewType: viewId);
   }
 
-  String generateId() {
+  static String _generateId() {
     const length = 20;
     const chars =
         'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz1234567890';

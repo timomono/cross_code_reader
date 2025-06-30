@@ -19,13 +19,12 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     (() async {
+      // print((await Camera.getCameras())[0].id);
       // Future.delayed(
       //   Duration(seconds: 5),
-      await controller.start(
-        (await Camera.getCameras())[0].id,
-        (text, _) => print(text),
-        // ),
-      );
+      // await (controller..callback = ((text, _) => print(text))).start();
+      controller.callback = (text, _) => print(text);
+      await controller.start();
     })();
   }
 
